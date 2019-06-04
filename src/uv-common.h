@@ -252,6 +252,8 @@ void uv__threadpool_cleanup(void);
     if (((h)->flags & UV_HANDLE_ACTIVE) != 0) break;                          \
     (h)->flags |= UV_HANDLE_ACTIVE;                                           \
     if (((h)->flags & UV_HANDLE_REF) != 0) uv__active_handle_add(h);          \
+    if ((h)->loop->on_watcher_queue_updated)                                  \
+      (h)->loop->on_watcher_queue_updated((h)->loop);                         \
   }                                                                           \
   while (0)
 
@@ -260,6 +262,8 @@ void uv__threadpool_cleanup(void);
     if (((h)->flags & UV_HANDLE_ACTIVE) == 0) break;                          \
     (h)->flags &= ~UV_HANDLE_ACTIVE;                                          \
     if (((h)->flags & UV_HANDLE_REF) != 0) uv__active_handle_rm(h);           \
+    if ((h)->loop->on_watcher_queue_updated)                                  \
+      (h)->loop->on_watcher_queue_updated((h)->loop);                         \
   }                                                                           \
   while (0)
 
