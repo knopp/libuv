@@ -1096,6 +1096,8 @@ int uv_spawn(uv_loop_t* loop,
      * breakaway.
      */
     process_flags |= DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP;
+  } else {
+    process_flags |= CREATE_BREAKAWAY_FROM_JOB;
   }
 
   if (!CreateProcessW(application_path,
