@@ -1030,7 +1030,11 @@ enum uv_process_flags {
    * option is only meaningful on Windows systems. On Unix it is silently
    * ignored.
    */
-  UV_PROCESS_WINDOWS_HIDE_GUI = (1 << 6)
+  UV_PROCESS_WINDOWS_HIDE_GUI = (1 << 6),
+  /*
+   * Run as low integrity (sandboxed) process.
+   */
+  UV_PROCESS_WINDOWS_LOW_INTEGRITY = (1 << 7),
 };
 
 /*

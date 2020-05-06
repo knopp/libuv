@@ -33,6 +33,7 @@
 #include "handle-inl.h"
 #include "req-inl.h"
 
+#include <sddl.h> // ConvertStringSidToSid; This has to be here otherwise 32bit libUV won't link; Go figure
 
 #define SIGKILL         9
 
@@ -965,7 +966,8 @@ int uv_spawn(uv_loop_t* loop,
                               UV_PROCESS_WINDOWS_HIDE |
                               UV_PROCESS_WINDOWS_HIDE_CONSOLE |
                               UV_PROCESS_WINDOWS_HIDE_GUI |
-                              UV_PROCESS_WINDOWS_VERBATIM_ARGUMENTS)));
+                              UV_PROCESS_WINDOWS_VERBATIM_ARGUMENTS |
+                              UV_PROCESS_WINDOWS_LOW_INTEGRITY)));
 
   err = uv_utf8_to_utf16_alloc(options->file, &application);
   if (err)
@@ -1100,16 +1102,90 @@ int uv_spawn(uv_loop_t* loop,
     process_flags |= CREATE_BREAKAWAY_FROM_JOB;
   }
 
-  if (!CreateProcessW(application_path,
-                     arguments,
-                     NULL,
-                     NULL,
-                     1,
-                     process_flags,
-                     env,
-                     cwd,
-                     &startup,
-                     &info)) {
+  if (options->flags & UV_PROCESS_WINDOWS_LOW_INTEGRITY) {
+      HANDLE hToken;
+      HANDLE hNewToken;
+      WCHAR wszIntegritySid[20] = L"S-1-16-4096";
+      PSID pIntegritySid = NULL;
+      TOKEN_MANDATORY_LABEL TIL = { 0 };
+
+      if (!OpenProcessToken(GetCurrentProcess(),
+                            TOKEN_DUPLICATE |
+                            TOKEN_ADJUST_DEFAULT |
+                            TOKEN_QUERY |
+                            TOKEN_ASSIGN_PRIMARY,
+                            &hToken)) {
+        err = GetLastError();
+        goto cleanup;
+      }
+
+      if (!DuplicateTokenEx(hToken,
+                            0,
+                            NULL,
+                            SecurityImpersonation,
+                            TokenPrimary,
+                            &hNewToken)) {
+        err = GetLastError();
+        goto cleanup;
+      }
+
+      // Low integrity SID
+
+      if (!ConvertStringSidToSidW(wszIntegritySid, &pIntegritySid)) {
+        err = GetLastError();
+        goto cleanup;
+      }
+
+      TIL.Label.Attributes = SE_GROUP_INTEGRITY;
+      TIL.Label.Sid = pIntegritySid;
+
+      if (!SetTokenInformation(hNewToken,
+                               TokenIntegrityLevel,
+                               &TIL,
+                               sizeof(TOKEN_MANDATORY_LABEL) + GetLengthSid(pIntegritySid))) {
+        err = GetLastError();
+        goto cleanup;
+      }
+
+      if (!CreateProcessAsUserW(hNewToken,
+                                application_path,
+                                arguments,
+                                NULL,
+                                NULL,
+                                1,
+                                process_flags,
+                                env,
+                                cwd,
+                                &startup,
+                                &info)) {
+        err = GetLastError();
+        goto cleanup;
+      }
+
+  cleanup:
+      LocalFree(pIntegritySid);
+
+      if (hNewToken != NULL) {
+        CloseHandle(hNewToken);
+      }
+
+      if (hToken != NULL) {
+        CloseHandle(hToken);
+      }
+
+      if (err != 0) {
+        goto done;
+      }
+  } else if (!CreateProcessW(application_path,
+                             arguments,
+                             NULL,
+                             NULL,
+                             1,
+                             process_flags,
+                             env,
+                             cwd,
+                             &startup,
+                             &info)) {
     /* CreateProcessW failed. */
     err = GetLastError();
     goto done;
