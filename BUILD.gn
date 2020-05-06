@@ -5,7 +5,7 @@ config("libuv_config") {
     include_dirs = ["include"]
 }
 
-bundle_shared_library("libuv") {
+source_set("libuv_sources") {
     if (is_win) {
         set_sources_assignment_filter([
             "*darwin*",
@@ -159,8 +159,15 @@ bundle_shared_library("libuv") {
     defines = ["BUILDING_UV_SHARED"]
 
     include_dirs = ["include", "src"]
+}
+
+bundle_shared_library("libuv") {
 
     public_configs = [":libuv_config"]
+
+    deps = [
+        ":libuv_sources",
+    ]
 
     if (is_posix) {
         # otherwise bundle_shared_library outputs liblibuv
